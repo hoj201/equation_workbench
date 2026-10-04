@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Equation Workbench</title>
+  <meta name="description" content="Practice algebra one step at a time." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><text x='16' y='22' font-size='16' font-family='serif' font-style='italic' text-anchor='middle' fill='white'>x=</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [["\\(", "\\)"]] },
+      chtml: { scale: 1.05, matchFontHeight: false },
+      startup: { typeset: false },
+      options: { enableMenu: false },
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div class="engine-bar" id="engine-bar" role="status" aria-live="polite">
+    <div class="engine-bar__track"><div class="engine-bar__fill"></div></div>
+    <span class="engine-bar__text" id="engine-status">Warming up the math engine…</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true"><i>x</i>=</span>
+      <span class="brand__name">Equation Workbench</span>
+    </div>
+    <button class="btn btn--ghost" id="new-problem" type="button" hidden>New problem</button>
+  </header>
+
+  <main class="workbench">
+    <ol class="history" id="history" aria-label="Previous steps"></ol>
+
+    <section class="card" id="current" aria-live="polite">
+      <div class="empty" id="empty">
+        <h1>What are we solving today?</h1>
+        <p>Type an expression or an equation below, or try one of these:</p>
+        <div class="examples" id="examples">
+          <button type="button" class="chip" data-example="2x+1=5">2x + 1 = 5</button>
+          <button type="button" class="chip" data-example="3x(2x+1)">3x(2x + 1)</button>
+          <button type="button" class="chip" data-example="x^2-1=0">x² − 1 = 0</button>
+          <button type="button" class="chip" data-example="log(e^x)">log(eˣ)</button>
+        </div>
+      </div>
+      <div class="current__label" id="current-label"></div>
+      <div class="current__math" id="current-math"></div>
+    </section>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <div class="composer__row">
+        <input class="composer__input" id="input" name="input" spellcheck="false"
+               placeholder="e.g. 2x + 1 = 5" aria-describedby="hint error" autofocus />
+        <button class="btn btn--primary" id="submit" type="submit">Start</button>
+      </div>
+      <div class="composer__preview" id="preview" aria-hidden="true"></div>
+      <p class="composer__error" id="error" role="alert"></p>
+      <p class="composer__hint" id="hint">Use <kbd>^</kbd> for powers. LaTeX like <code>\frac{x}{2}</code> works too.</p>
+    </form>
+
+    <div class="actions" id="actions" hidden>
+      <div class="actions__group">
+        <button class="btn btn--pill" type="button" data-transform="distribute">Distribute</button>
+        <button class="btn btn--pill" type="button" data-transform="factor">Factor</button>
+        <button class="btn btn--pill" type="button" data-transform="simplify">Simplify</button>
+      </div>
+      <button class="btn btn--ghost" id="undo" type="button" title="Undo last step (⌘Z)">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M7.5 5 3 9.5 7.5 14M3.5 9.5H12a4 4 0 0 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Undo
+      </button>
+    </div>
+  </main>
+
+  <footer class="footer">Everything stays in your browser. Refreshing starts fresh.</footer>
+</body>
+</html>
