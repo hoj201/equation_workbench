@@ -4,12 +4,14 @@ This repository will contain code for a web-app to help middle and high school s
 ## Usage
 When the app is loaded you are presented with a prompt that invited you to type in either an algebraic expression or an algebraic equation.
 
-The equation (or expression) is then displayed (via Mathjax), with an input text box below it along with three buttons (distribute, factor, and simplify).
+The equation (or expression) is then displayed (via Mathjax), with an input text box below it along with four buttons (combine like terms, distribute, factor, and simplify).
 In the prompt you can type in a manipulation.  For example, if you wanted to add one to both side of the equation (or just add one to the algebraic expression), then you would type `+1`.  If you wanted to add $x$ you would type `+x`.  If you wanted to divide both side by $x+1$ you would type `/(x+1)`.  After presenting return, the expression displayed previously moves to the top and is greyed.  In place of the old expression is a new expression (not yet simplified or expanded).
 
 All the computation results are stored locally, there is no backend database.  Refreshing the browser resets everything.
 
-### Distribute/Factor/Simplify Buttons
+### Combine/Distribute/Factor/Simplify Buttons
+ - The `combine like terms` button only adds up matching terms, so $3x^2+2x^2+x$ becomes $5x^2+x$. Nothing else changes: $2(x+1)$ isn't distributed and nothing is factored.
+
  - The `simplify` button will do things like combine like terms so $2x+x+1+1$ becomes $3x+2$ or turn $(x^3)^2$ into $x^6$, or even transform $\log(e^x)$ into $x$.
 
  - The `distribute` button will apply the distributive property to get rid of parenthesis, so $3x(2x+1)$ would become $6x^2 + 3x$.
@@ -30,7 +32,7 @@ css/styles.css        styles (light + dark mode)
 js/app.js             UI: history, undo, buttons, live preview
 js/engine-client.js   promise wrapper around the worker
 js/worker.js          loads Pyodide + SymPy and runs py/engine.py
-py/engine.py          the math: parsing, both-sides operations, simplify/distribute/factor
+py/engine.py          the math: parsing, both-sides operations, the four buttons
 tests/test_engine.py  pytest tests for the math engine
 ```
 

@@ -107,6 +107,11 @@ def test_multiply_and_power():
     assert engine.apply_op(r["id"], "^2")["latex"] == r"\left(x + 1\right)^{2}"
 
 
+def test_products_print_unambiguously():
+    r = engine.parse_problem("3x=6")
+    assert engine.apply_op(r["id"], "*x")["latex"] == r"x \left(3 x\right) = x \cdot 6"
+
+
 def test_unicode_operators():
     r = engine.parse_problem("x")
     assert engine.apply_op(r["id"], "÷2")["label"] == r"\div\,2"
@@ -172,6 +177,48 @@ def test_buttons_apply_per_side():
     r = engine.parse_problem("2(x+1)=4x+2x")
     r = engine.transform(r["id"], "distribute")
     assert r["latex"] == "2 x + 2 = 6 x"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("3x^2+2x^2+x", "5 x^{2} + x"),
+        ("2x+3x+1", "5 x + 1"),
+        ("x+2y+3x-y", "4 x + y"),
+        ("xy+2yx", "3 x y"),
+        ("x/2+x/2", "x"),
+        ("3x-3x", "0"),
+        ("x-2x", "- x"),
+        # Only like terms are touched: no distributing, cancelling or log rules.
+        ("2(x+1)+3", r"2 \left(x + 1\right) + 3"),
+        ("log(e^x)+x+x", r"\log{\left(e^{x} \right)} + 2 x"),
+        ("(x^3)^2+x", r"\left(x^{3}\right)^{2} + x"),
+        ("x/x+1", r"\frac{x}{x} + 1"),
+        # ...but sums inside brackets are combined too.
+        ("(2x+3x)^2", r"\left(5 x\right)^{2}"),
+        ("3x(2x+3x)", r"3 x \left(5 x\right)"),
+    ],
+)
+def test_combine_like_terms(text, expected):
+    r = engine.parse_problem(text)
+    assert engine.transform(r["id"], "combine")["latex"] == expected
+
+
+def test_combine_like_terms_is_lighter_than_simplify():
+    r = engine.parse_problem("3x^2+2x^2+x")
+    assert engine.transform(r["id"], "simplify")["latex"] == r"x \left(5 x + 1\right)"
+    r = engine.transform(r["id"], "combine")
+    assert r["label"] == r"\text{combine like terms}"
+
+
+def test_combine_like_terms_per_side():
+    r = engine.parse_problem("2x+x+1=5+1")
+    assert engine.transform(r["id"], "combine")["latex"] == "3 x + 1 = 6"
+
+
+def test_combine_like_terms_with_nothing_to_combine():
+    r = engine.parse_problem("x+1")
+    assert engine.transform(r["id"], "combine")["latex"] == r["latex"]
 
 
 # ---------------------------------------------------------------- preview

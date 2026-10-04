@@ -7,6 +7,7 @@ an older id".
 """
 
 import sympy as sp
+from sympy.printing.latex import LatexPrinter
 from sympy.parsing.sympy_parser import (
     convert_xor,
     implicit_multiplication_application,
@@ -56,13 +57,47 @@ def _get(expr_id):
         raise UserError("That step no longer exists. Try starting a new problem.")
 
 
+class _Printer(LatexPrinter):
+    """SymPy's LaTeX printer, made unambiguous for unevaluated products.
+
+    Stock output for x·(3x) is "x 3 x" and for x·6 is "x 6". Here a product
+    nested in a product gets brackets and a number that isn't the leading
+    factor gets a dot: "x \\left(3 x\\right)", "x \\cdot 6".
+    """
+
+    def _print_Mul(self, expr):
+        args = list(expr.args)
+        sign = ""
+        if args[0] == -1 and len(args) > 1:
+            sign, args = "-", args[1:]
+        fiddly = any(isinstance(a, sp.Mul) for a in args) or any(
+            a.is_Number for a in args[1:]
+        )
+        has_denominator = any(
+            isinstance(a, sp.Pow) and a.exp.is_negative for a in args
+        )
+        if not fiddly or has_denominator:
+            return super()._print_Mul(expr)
+        if len(args) == 1:
+            return sign + self._print(args[0])
+        parts = []
+        for i, a in enumerate(args):
+            tex = self._print(a)
+            if isinstance(a, (sp.Mul, sp.Add)) or (a.is_Number and a.is_negative):
+                tex = rf"\left({tex}\right)"
+            if i and tex[0].isdigit():
+                parts.append(r"\cdot")
+            parts.append(tex)
+        return sign + " ".join(parts)
+
+
 def to_latex(expr):
     if isinstance(expr, sp.Equality):
         return f"{to_latex(expr.lhs)} = {to_latex(expr.rhs)}"
     # Keep the student's term order while the expression is unevaluated, but
     # use SymPy's tidy polynomial order once a button has evaluated it.
     order = None if _evaluated(expr) == expr else "none"
-    return sp.latex(expr, order=order)
+    return _Printer({"order": order}).doprint(expr)
 
 
 def _check_parens(text):
@@ -197,11 +232,68 @@ def _per_side(expr, fn):
     return fn(expr)
 
 
+def _split_term(term):
+    """Split a term into (rational coefficient, its other factors).
+
+    The other factors are compared as written, in any order, so 2xy and yx
+    match but x·x and x^2 don't. Nothing is evaluated.
+    """
+    factors, stack = [], [term]
+    while stack:
+        t = stack.pop()
+        if isinstance(t, sp.Mul):
+            stack.extend(reversed(t.args))
+        else:
+            factors.append(t)
+    coeff, rest = sp.Integer(1), []
+    for f in factors:
+        value = _evaluated(f) if f.is_number else None
+        if value is not None and value.is_Rational:
+            coeff *= value
+        else:
+            rest.append(f)
+    return coeff, tuple(sorted(rest, key=sp.default_sort_key))
+
+
+def _build_term(coeff, key):
+    if not key:
+        return coeff
+    with sp.evaluate(False):
+        if coeff == 1:
+            return key[0] if len(key) == 1 else sp.Mul(*key)
+        return sp.Mul(coeff, *key)
+
+
+def combine_like_terms(expr):
+    """Add up the coefficients of matching terms in every sum, and nothing else.
+
+    3x^2 + 2x^2 + x -> 5x^2 + x, but 2(x+1) stays put and log(e^x) is left alone.
+    """
+    if not expr.args:
+        return expr
+    args = [combine_like_terms(a) for a in expr.args]
+    if not isinstance(expr, sp.Add):
+        with sp.evaluate(False):
+            return expr.func(*args)
+    groups = {}  # dicts keep first-seen order, so the student's order survives
+    for a in args:
+        for t in a.args if isinstance(a, sp.Add) else (a,):
+            coeff, key = _split_term(t)
+            groups[key] = groups.get(key, 0) + coeff
+    terms = [_build_term(c, k) for k, c in groups.items() if c != 0]
+    if not terms:
+        return sp.Integer(0)
+    with sp.evaluate(False):
+        return terms[0] if len(terms) == 1 else sp.Add(*terms)
+
+
 TRANSFORMS = {
+    "combine": combine_like_terms,
     "simplify": lambda e: sp.simplify(_evaluated(e)),
     "distribute": lambda e: sp.expand(_evaluated(e)),
     "factor": lambda e: sp.factor(_evaluated(e)),
 }
+LABELS = {"combine": "combine like terms"}
 
 
 # ---------------------------------------------------------------- public API
@@ -225,7 +317,8 @@ def transform(expr_id, kind):
     if fn is None:
         raise UserError(f"Unknown button: {kind}")
     new = _per_side(expr, fn)
-    return {"id": _save(new), "latex": to_latex(new), "label": rf"\text{{{kind}}}"}
+    label = rf"\text{{{LABELS.get(kind, kind)}}}"
+    return {"id": _save(new), "latex": to_latex(new), "label": label}
 
 
 def preview(text, mode="problem"):

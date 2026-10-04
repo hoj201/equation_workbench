@@ -563,10 +563,11 @@ code {
 
 @media (max-width: 480px) {
   .actions__group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     width: 100%;
   }
   .actions__group .btn {
-    flex: 1;
     padding: 0 8px;
   }
   .current__math {

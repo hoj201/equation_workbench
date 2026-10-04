@@ -161,9 +161,11 @@ async function submit(text) {
   if (!result) return;
   state.steps.push({ id: result.id, latex: result.latex, label: result.label ?? null });
   els.input.value = "";
-  els.preview.replaceChildren();
+  clearPreview();
   render();
 }
+
+const NOTHING_TO_DO = { combine: "No like terms to combine." };
 
 async function applyTransform(kind) {
   const current = state.steps.at(-1);
@@ -171,7 +173,7 @@ async function applyTransform(kind) {
   const result = await run("transform", current.id, kind);
   if (!result) return;
   if (result.latex === current.latex) {
-    showError(`Nothing to ${kind} here.`);
+    showError(NOTHING_TO_DO[kind] ?? `Nothing to ${kind} here.`);
     return;
   }
   state.steps.push(result);
@@ -196,7 +198,7 @@ function revertTo(index) {
 function newProblem() {
   state.steps = [];
   els.input.value = "";
-  els.preview.replaceChildren();
+  clearPreview();
   clearError();
   render();
   els.input.focus();
@@ -225,6 +227,13 @@ function refreshPreview() {
   }, 150);
 }
 
+// Also drops any preview still in flight, so it can't reappear afterwards.
+function clearPreview() {
+  clearTimeout(previewTimer);
+  previewSeq++;
+  els.preview.replaceChildren();
+}
+
 // ------------------------------------------------------------------ wiring
 
 els.form.addEventListener("submit", (e) => {
@@ -241,7 +250,7 @@ els.input.addEventListener("input", () => {
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     els.input.value = "";
-    els.preview.replaceChildren();
+    clearPreview();
     clearError();
   }
 });
