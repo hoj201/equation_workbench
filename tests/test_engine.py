@@ -298,7 +298,8 @@ def test_cancel_leaves_sums_alone():
 def test_options_track_the_solve():
     r = engine.parse_problem("2x+1=5")
     assert engine.options(r["id"]) == {
-        "combine": False, "cancel": False, "multiply": False, "solved": False
+        "combine": False, "cancel": False, "multiply": False,
+        "distribute_step": False, "factor_out": False, "solved": False,
     }
     r = _steps("2x+1=5", "-1")
     assert engine.options(r["id"])["combine"] is True
@@ -306,7 +307,8 @@ def test_options_track_the_solve():
     assert engine.options(r["id"])["cancel"] is True
     r = _steps("2x+1=5", "-1", "!combine", "/2", "!cancel")
     assert engine.options(r["id"]) == {
-        "combine": False, "cancel": False, "multiply": False, "solved": True
+        "combine": False, "cancel": False, "multiply": False,
+        "distribute_step": False, "factor_out": False, "solved": True,
     }
 
 
@@ -322,6 +324,63 @@ def test_solved(text, solved):
 def test_reciprocals_print_as_fractions():
     assert _steps("3x=1", "/3")["latex"] == r"\frac{3 x}{3} = \frac{1}{3}"
     assert _steps("x=1", "/(x+1)")["latex"] == r"\frac{x}{x + 1} = \frac{1}{x + 1}"
+
+
+@pytest.mark.parametrize(
+    "start,expected",
+    [
+        ("3(x+1)", r"3 x + 3 \cdot 1"),
+        ("x(y-1)", "x y - x"),
+        ("-2(x-3)", r"- 2 x + \left(-2\right) \left(-3\right)"),
+        ("5-2(x+1)", r"5 - 2 x - 2 \cdot 1"),
+        ("3(x+1)/2", r"\frac{3 x + 3 \cdot 1}{2}"),
+        # one bracket at a time
+        ("2(3(x+1)+1)", r"2 \left(3 \left(x + 1\right)\right) + 2 \cdot 1"),
+    ],
+)
+def test_distribute_step(start, expected):
+    r = engine.transform(engine.parse_problem(start)["id"], "distribute_step")
+    assert r["latex"] == expected
+    assert r["label"] == r"\text{distribute}"
+
+
+def test_distribute_then_multiply_numbers():
+    assert _steps("-2(x-3)=4", "!distribute_step", "!multiply")["latex"] == "- 2 x + 6 = 4"
+
+
+def test_distribute_not_offered_for_a_plain_fraction():
+    # (7-2x)/3 has nothing multiplying the bracket.
+    r = engine.parse_problem("y=(7-2x)/3")
+    assert engine.options(r["id"], "y")["distribute_step"] is False
+
+
+@pytest.mark.parametrize(
+    "start,expected",
+    [
+        ("6x+3", r"3 \left(2 x + 1\right)"),
+        ("2x+4", r"2 \left(x + 2\right)"),
+        ("-2x-4", r"- 2 \left(x + 2\right)"),
+        ("ay+by", r"y \left(a + b\right)"),
+        ("x^2+3x", r"x \left(x + 3\right)"),
+        ("(8+2a)/4", r"\frac{2 \left(4 + a\right)}{4}"),
+    ],
+)
+def test_factor_out(start, expected):
+    r = engine.transform(engine.parse_problem(start)["id"], "factor_out")
+    assert r["latex"] == expected
+    assert r["label"] == r"\text{factor}"
+
+
+def test_factor_only_pulls_out_a_common_factor():
+    # No difference-of-squares or trinomial factoring, and nothing to pull out here.
+    for text in ["x^2-1", "x^2+3x+2", "2x+3"]:
+        assert engine.options(engine.parse_problem(text)["id"])["factor_out"] is False
+
+
+def test_solve_for_y_by_factoring():
+    r = _steps("ay+by=c", "!factor_out", "/(a+b)", "!cancel")
+    assert r["latex"] == r"y = \frac{c}{a + b}"
+    assert engine.options(r["id"], "y")["solved"] is True
 
 
 def test_parse_lists_variables():

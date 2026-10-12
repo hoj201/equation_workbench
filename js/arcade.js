@@ -124,7 +124,8 @@ export function initArcade(engine) {
   engine.ready.then(() => (engineReady = true), () => {});
 
   // Each step: {id, latex, label, move, options: {combine, cancel, multiply, solved}}.
-  // move is true for the big arcade buttons; only those count as moves.
+  // move is true for the big arcade buttons and the power-ups in
+  // COSTS_A_MOVE; only those count as moves.
   // target is the variable being solved for.
   const state = { steps: [], target: null, busy: false };
 
@@ -330,6 +331,10 @@ export function initArcade(engine) {
     push({ ...next, move: true }, SFX.move);
   }
 
+  // Distribute and factor are real choices, so they cost a move. The others
+  // are free tidying up.
+  const COSTS_A_MOVE = new Set(["distribute_step", "factor_out"]);
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // Show what's about to happen (like terms coloured, factors struck out)
@@ -355,7 +360,7 @@ export function initArcade(engine) {
     } else {
       sound.slash();
     }
-    push(next, SFX.powerup);
+    push({ ...next, move: COSTS_A_MOVE.has(kind) }, SFX.powerup);
   }
 
   function undo() {

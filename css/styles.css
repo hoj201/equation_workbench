@@ -1253,6 +1253,17 @@ code {
   animation: glow 0.9s steps(2) infinite;
 }
 
+.powerup small {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 4px;
+  font-size: 8px;
+  vertical-align: middle;
+  color: var(--neon-yellow);
+  background: #1b0430;
+  border-radius: 3px;
+}
+
 .powerup:active:not(:disabled) {
   transform: translateY(4px);
   box-shadow: 0 1px 0 #9c1462, 0 0 18px rgb(255 63 164 / 0.7);

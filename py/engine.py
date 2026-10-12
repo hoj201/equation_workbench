@@ -95,6 +95,27 @@ class _Printer(LatexPrinter):
             parts.append(tex)
         return sign + " ".join(parts)
 
+    def _print_Add(self, expr, order=None):
+        """Stock _print_Add, but pulling out a minus sign never does arithmetic.
+
+        The stock printer negates the term (-term), which evaluates it, so
+        (-2)(-3) printed as "- -6" and -2·3 as "- 6".
+        """
+        tex = ""
+        for i, term in enumerate(self._as_ordered_terms(expr, order=order)):
+            if i == 0:
+                pass
+            elif _negatives(term) >= 2 or not term.could_extract_minus_sign():
+                tex += " + "
+            else:
+                tex += " - "
+                term = _negate(term)
+            term_tex = self._print(term)
+            if self._needs_add_brackets(term):
+                term_tex = rf"\left({term_tex}\right)"
+            tex += term_tex
+        return tex
+
     def _print_fraction(self, args):
         """One \\frac for the whole product, so 1·3⁻¹ reads 1/3, not 1·(1/3)."""
         top, bottom = [], []
@@ -115,6 +136,24 @@ class _Printer(LatexPrinter):
             num = sp.Mul(*top) if len(top) > 1 else (top[0] if top else sp.Integer(1))
             den = sp.Mul(*bottom) if len(bottom) > 1 else bottom[0]
         return rf"{sign}\frac{{{self._print(num)}}}{{{self._print(den)}}}"
+
+
+def _negatives(term):
+    """How many negative numbers a product has as direct factors."""
+    if not isinstance(term, sp.Mul):
+        return 0
+    return sum(1 for a in term.args if a.is_Number and a.is_negative)
+
+
+def _negate(term):
+    """-term without evaluating: -2·3 -> 2·3, -x -> x."""
+    if isinstance(term, sp.Mul) and term.args[0].is_Number and term.args[0].is_negative:
+        first = -term.args[0]
+        parts = ([first] if first != 1 else []) + list(term.args[1:])
+        if len(parts) == 1:
+            return parts[0]
+        return sp.Mul(*parts, evaluate=False)
+    return -term
 
 
 def to_latex(expr):
@@ -305,8 +344,15 @@ def combine_like_terms(expr):
     for a in args:
         for t in a.args if isinstance(a, sp.Add) else (a,):
             coeff, key = _split_term(t)
-            groups[key] = groups.get(key, 0) + coeff
-    terms = [_build_term(c, k) for k, c in groups.items() if c != 0]
+            total, members = groups.get(key, (0, []))
+            groups[key] = (total + coeff, members + [t])
+    # A term with nothing to combine with stays exactly as written, so 3·1
+    # is left for multiply numbers rather than quietly becoming 3.
+    terms = [
+        members[0] if len(members) == 1 else _build_term(c, k)
+        for k, (c, members) in groups.items()
+        if len(members) == 1 or c != 0
+    ]
     if not terms:
         return sp.Integer(0)
     with sp.evaluate(False):
@@ -465,8 +511,11 @@ def _per_product(fn):
     def walk(expr):
         if not expr.args:
             return expr
+        # Walk the children first, outside evaluate(False): fn does real
+        # arithmetic on numbers and must not be left unevaluated.
+        args = [walk(a) for a in expr.args]
         with sp.evaluate(False):
-            rebuilt = expr.func(*(walk(a) for a in expr.args))
+            rebuilt = expr.func(*args)
         if isinstance(rebuilt, sp.Mul) or (
             isinstance(rebuilt, sp.Pow) and rebuilt.is_number
         ):
@@ -621,6 +670,122 @@ def _is_tidy(expr):
     )
 
 
+def _flat_add(terms):
+    """An unevaluated sum of terms, with any nested sums opened up."""
+    flat = [t for term in terms for t in _terms(term)]
+    with sp.evaluate(False):
+        return flat[0] if len(flat) == 1 else sp.Add(*flat)
+
+
+def _distribute_product(term):
+    """Multiply one bracket out: 3(x+1) -> 3x + 3·1, x(y-1) -> xy - x.
+
+    Only the first bracket in a product is opened, and nothing is tidied
+    afterwards (3·1 is left for multiply numbers). A denominator stays put:
+    3(x+1)/2 -> (3x + 3·1)/2. Returns None if there's no bracket to open.
+    """
+    factors = _flatten_mul(term)
+    top = [f for f in factors if not (isinstance(f, sp.Pow) and f.exp.is_negative)]
+    bottom = [f for f in factors if f not in top]
+    i = next((k for k, f in enumerate(top) if isinstance(f, sp.Add)), None)
+    if i is None or len(top) < 2:
+        return None
+    numbers = [f for f in top[:i] + top[i + 1:] if f.is_number]
+    before = [f for f in top[:i] if not f.is_number]
+    after = [f for f in top[i + 1:] if not f.is_number]
+    # "y - 1" stores -1 as (-1)·1; work such numbers out before building.
+    inner = [_evaluated(t) if t.is_number else t for t in _terms(top[i])]
+    new_terms = []
+    with sp.evaluate(False):
+        for t in inner:
+            if t.is_number:
+                # Numbers go in front; a bare 1 next to letters disappears.
+                parts = numbers + ([t] if numbers or t != 1 else []) + before + after
+            else:
+                parts = numbers + before + [t] + after
+            new_terms.append(parts[0] if len(parts) == 1 else sp.Mul(*parts))
+        out = _flat_add(new_terms)
+        return sp.Mul(out, *bottom) if bottom else out
+
+
+def distribute_step(expr):
+    """Open the outermost brackets only; inner ones wait for another press."""
+    if not expr.args:
+        return expr
+    if isinstance(expr, sp.Mul):
+        done = _distribute_product(expr)
+        if done is not None:
+            return done
+    args = [distribute_step(a) for a in expr.args]
+    if isinstance(expr, sp.Add):
+        return _flat_add(args)
+    with sp.evaluate(False):
+        return expr.func(*args)
+
+
+def _powers(factors):
+    """Factors as {base: [base, total exponent]}, matching bases as written."""
+    out = {}
+    for f in factors:
+        base, exp = f, sp.Integer(1)
+        if isinstance(f, sp.Pow) and f.exp.is_Integer:
+            base, exp = f.base, f.exp
+        key = sp.srepr(_evaluated(base))
+        if key in out:
+            out[key][1] += exp
+        else:
+            out[key] = [base, exp]
+    return out
+
+
+def _factor_sum(expr):
+    """Pull the greatest common factor out of one sum: 6x + 3 -> 3(2x + 1),
+    ay + by -> y(a + b). No other factoring. Returns None if there's none."""
+    terms = _terms(expr)
+    split = [_split_term(t) for t in terms]
+    coeffs = [c for c, _ in split]
+    powers = [_powers(rest) for _, rest in split]
+
+    g = sp.Integer(1)
+    if all(c.is_Integer for c in coeffs):
+        g = sp.Integer(sp.igcd(*[int(abs(c)) for c in coeffs]) or 1)
+        if all(c < 0 for c in coeffs):
+            g = -g
+    common = {}
+    for key, (base, exp) in powers[0].items():
+        if exp > 0 and all(key in p and p[key][1] > 0 for p in powers):
+            common[key] = [base, min(p[key][1] for p in powers)]
+    if g == 1 and not common:
+        return None
+
+    def power(base, exp):
+        return base if exp == 1 else sp.Pow(base, exp, evaluate=False)
+
+    inner = []
+    for c, p in zip(coeffs, powers):
+        rest = [
+            power(base, exp - common.get(key, [None, 0])[1])
+            for key, (base, exp) in p.items()
+            if exp - common.get(key, [None, 0])[1] != 0
+        ]
+        inner.append(_build_term(c / g, tuple(rest)))
+    with sp.evaluate(False):
+        outside = ([g] if g != 1 else []) + [power(b, e) for b, e in common.values()]
+        return sp.Mul(*outside, _flat_add(inner))
+
+
+def factor_out(expr):
+    """Factor the greatest common factor out of every sum, innermost first."""
+    if not expr.args:
+        return expr
+    args = [factor_out(a) for a in expr.args]
+    with sp.evaluate(False):
+        rebuilt = expr.func(*args)
+    if isinstance(rebuilt, sp.Add):
+        return _factor_sum(rebuilt) or rebuilt
+    return rebuilt
+
+
 def _is_solved(expr, target=None):
     """y = ... or ... = y, with no y on the other side and nothing left to tidy.
 
@@ -651,6 +816,8 @@ TRANSFORMS = {
     "combine": combine_like_terms,
     "cancel": cancel_common_factors,
     "multiply": multiply_numbers,
+    "distribute_step": distribute_step,
+    "factor_out": factor_out,
     "simplify": lambda e: sp.simplify(_evaluated(e)),
     "distribute": lambda e: sp.expand(_evaluated(e)),
     "factor": lambda e: sp.factor(_evaluated(e)),
@@ -659,6 +826,8 @@ LABELS = {
     "combine": "combine like terms",
     "cancel": "cancel common factors",
     "multiply": "multiply numbers",
+    "distribute_step": "distribute",
+    "factor_out": "factor",
 }
 
 
@@ -696,6 +865,8 @@ def options(expr_id, target=None):
         "combine": to_latex(_per_side(expr, combine_like_terms)) != latex,
         "cancel": to_latex(_per_side(expr, cancel_common_factors)) != latex,
         "multiply": to_latex(_per_side(expr, multiply_numbers)) != latex,
+        "distribute_step": to_latex(_per_side(expr, distribute_step)) != latex,
+        "factor_out": to_latex(_per_side(expr, factor_out)) != latex,
         "solved": _is_solved(expr, target),
     }
 
