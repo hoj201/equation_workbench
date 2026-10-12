@@ -8,11 +8,12 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><text x='16' y='22' font-size='16' font-family='serif' font-style='italic' text-anchor='middle' fill='white'>x=</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Press+Start+2P&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
     window.MathJax = {
-      tex: { inlineMath: [["\\(", "\\)"]] },
+      loader: { load: ["[tex]/cancel", "[tex]/color"] },
+      tex: { inlineMath: [["\\(", "\\)"]], packages: { "[+]": ["cancel", "color"] } },
       chtml: { scale: 1.05, matchFontHeight: false },
       startup: { typeset: false },
       options: { enableMenu: false },
@@ -32,10 +33,14 @@
       <span class="brand__mark" aria-hidden="true"><i>x</i>=</span>
       <span class="brand__name">Equation Workbench</span>
     </div>
+    <nav class="tabs" aria-label="Mode">
+      <a class="tabs__tab" href="#" data-tab="workbench">Workbench</a>
+      <a class="tabs__tab" href="#arcade" data-tab="arcade">Arcade mode</a>
+    </nav>
     <button class="btn btn--ghost" id="new-problem" type="button" hidden>New problem</button>
   </header>
 
-  <main class="workbench">
+  <main class="workbench" id="workbench-view">
     <ol class="history" id="history" aria-label="Previous steps"></ol>
 
     <section class="card" id="current" aria-live="polite">
@@ -75,6 +80,92 @@
         <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M7.5 5 3 9.5 7.5 14M3.5 9.5H12a4 4 0 0 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Undo
       </button>
+    </div>
+  </main>
+
+  <main class="arcade" id="arcade-view" hidden>
+    <div class="cabinet">
+      <div class="marquee" aria-hidden="true">EQUATION&nbsp;ATTACK</div>
+
+      <div class="screen" id="b-screen">
+        <div class="hud">
+          <span>MOVES <b id="b-moves">00</b></span>
+          <span class="hud__goal" id="b-goal" hidden>SOLVE FOR <i id="b-goal-var"></i></span>
+          <button class="hud__sound" id="b-sound" type="button" aria-pressed="true" title="Sound on/off">♪ ON</button>
+        </div>
+
+        <div class="title" id="b-title">
+          <p class="title__big">INSERT<br />EQUATION</p>
+          <form class="title__form" id="b-start" autocomplete="off">
+            <input class="slot title__equation" id="b-problem" spellcheck="false" placeholder="3y+2x=7" aria-label="Equation to solve" />
+            <label class="title__target">SOLVE FOR
+              <input class="slot slot--letter" id="b-target" spellcheck="false" maxlength="8" placeholder="y" />
+            </label>
+            <button class="press-start" type="submit">START</button>
+          </form>
+          <p class="title__pick">OR PICK A LEVEL</p>
+          <div class="levels" id="b-levels">
+            <button type="button" data-level="2x+1=5">2x+1=5</button>
+            <button type="button" data-level="x/3=4">x/3=4</button>
+            <button type="button" data-level="3x-7=2x+5">3x−7=2x+5</button>
+            <button type="button" data-level="-2x+4=10">−2x+4=10</button>
+            <button type="button" data-level="3y+2x=7" data-target="y">3y+2x=7 <i>→y</i></button>
+            <button type="button" data-level="4b-2a=8" data-target="b">4b−2a=8 <i>→b</i></button>
+          </div>
+        </div>
+
+        <div class="play" id="b-play" hidden>
+          <ol class="trail" id="b-trail" aria-label="Previous steps"></ol>
+          <div class="now" aria-live="polite">
+            <div class="now__label" id="b-label"></div>
+            <div class="now__math" id="b-math"></div>
+          </div>
+        </div>
+
+        <div class="clear" id="b-clear" hidden>
+          <p class="clear__big">LEVEL CLEAR!</p>
+          <p class="clear__small" id="b-clear-moves"></p>
+        </div>
+
+        <p class="screen__error" id="b-error" role="alert"></p>
+        <div class="slash" id="b-slash" aria-hidden="true"></div>
+      </div>
+
+      <div class="deck" id="b-deck">
+        <div class="deck__ops">
+          <div class="op op--add">
+            <button class="arcade-btn" type="button" data-op="+" aria-label="Add"><span>+</span></button>
+            <span class="op__name">ADD</span>
+            <input class="slot" data-for="+" spellcheck="false" autocomplete="off" aria-label="Amount to add" />
+          </div>
+          <div class="op op--sub">
+            <button class="arcade-btn" type="button" data-op="-" aria-label="Subtract"><span>-</span></button>
+            <span class="op__name">SUBTRACT</span>
+            <input class="slot" data-for="-" spellcheck="false" autocomplete="off" aria-label="Amount to subtract" />
+          </div>
+          <div class="op op--mul">
+            <button class="arcade-btn" type="button" data-op="*" aria-label="Multiply"><span>×</span></button>
+            <span class="op__name">MULTIPLY</span>
+            <input class="slot" data-for="*" spellcheck="false" autocomplete="off" aria-label="Amount to multiply by" />
+          </div>
+          <div class="op op--div">
+            <button class="arcade-btn" type="button" data-op="/" aria-label="Divide"><span>÷</span></button>
+            <span class="op__name">DIVIDE</span>
+            <input class="slot" data-for="/" spellcheck="false" autocomplete="off" aria-label="Amount to divide by" />
+          </div>
+        </div>
+
+        <div class="deck__powerups">
+          <button class="powerup" type="button" data-transform="combine" hidden>★ COMBINE LIKE TERMS</button>
+          <button class="powerup" type="button" data-transform="cancel" hidden>★ CANCEL COMMON FACTORS</button>
+          <button class="powerup" type="button" data-transform="multiply" hidden>★ MULTIPLY NUMBERS</button>
+        </div>
+
+        <div class="deck__system">
+          <button class="sys-btn" id="b-undo" type="button" title="Undo last step (⌘Z)">◀ UNDO</button>
+          <button class="sys-btn" id="b-new" type="button">NEW GAME</button>
+        </div>
+      </div>
     </div>
   </main>
 

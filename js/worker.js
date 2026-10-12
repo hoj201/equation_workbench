@@ -8,7 +8,7 @@ import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyod
 const DISPATCH = `
 import json, engine
 
-PUBLIC = {"parse_problem", "apply_op", "transform", "preview"}
+PUBLIC = {"parse_problem", "apply_op", "transform", "options", "highlight", "preview"}
 
 def _dispatch(fn, args_json):
     try:

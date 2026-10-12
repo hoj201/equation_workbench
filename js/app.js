@@ -1,4 +1,6 @@
 import { createEngine, EngineError } from "./engine-client.js";
+import { renderMath } from "./math.js";
+import { initArcade } from "./arcade.js";
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -17,6 +19,7 @@ const els = {
   actions: $("actions"),
   undo: $("undo"),
   newProblem: $("new-problem"),
+  view: $("workbench-view"),
 };
 
 // steps[0] is the original problem; every later step has the label of the
@@ -38,18 +41,6 @@ engine.ready.then(
 );
 
 // ------------------------------------------------------------------ math
-
-const mathReady = new Promise((resolve) => {
-  const wait = () => (window.MathJax?.startup?.promise ? MathJax.startup.promise.then(resolve) : setTimeout(wait, 30));
-  wait();
-});
-
-async function renderMath(el, latex, display = true) {
-  await mathReady;
-  el.replaceChildren(MathJax.tex2chtml(latex, { display }));
-  MathJax.startup.document.clear();
-  MathJax.startup.document.updateDocument();
-}
 
 // Transform labels arrive as \text{simplify}; show those as plain text.
 function labelNode(latex, accent = false) {
@@ -100,7 +91,7 @@ function render({ direction = "forward" } = {}) {
   els.empty.hidden = hasProblem;
   els.currentMath.hidden = !hasProblem;
   els.actions.hidden = !hasProblem;
-  els.newProblem.hidden = !hasProblem;
+  els.newProblem.hidden = !hasProblem || els.view.hidden;
   els.currentLabel.replaceChildren();
 
   if (hasProblem) {
@@ -257,6 +248,7 @@ els.input.addEventListener("keydown", (e) => {
 
 document.addEventListener("keydown", (e) => {
   // ⌘Z / Ctrl+Z undoes a step, unless the student is undoing typing.
+  if (els.view.hidden) return;
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
     if (document.activeElement === els.input && els.input.value) return;
     e.preventDefault();
@@ -277,4 +269,21 @@ $("examples").addEventListener("click", (e) => {
   if (example) submit(example);
 });
 
-render();
+// ------------------------------------------------------------------ tabs
+
+const views = { workbench: els.view, arcade: $("arcade-view") };
+
+function showTab() {
+  // #basic is the old name for arcade mode; keep those links working.
+  const tab = ["#arcade", "#basic"].includes(location.hash) ? "arcade" : "workbench";
+  for (const [name, view] of Object.entries(views)) view.hidden = name !== tab;
+  for (const link of document.querySelectorAll("[data-tab]")) {
+    link.setAttribute("aria-current", link.dataset.tab === tab ? "page" : "false");
+  }
+  document.body.dataset.tab = tab;
+  render();
+}
+
+window.addEventListener("hashchange", showTab);
+initArcade(engine);
+showTab();

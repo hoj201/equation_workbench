@@ -21,6 +21,24 @@ All the computation results are stored locally, there is no backend database.  R
 ### Undo
 The `undo` button (or ⌘Z / Ctrl+Z) undoes the last step, bringing back the previous expression. You can also click any earlier step in the history to jump back to it.
 
+## Arcade mode
+The **Arcade mode** tab is the same idea, set up for solving equations and styled like a cheap arcade game ("Equation Attack").
+
+Type an equation and the letter to solve for in the **SOLVE FOR** box. With only one letter (like $2x+1=5$) the box can stay blank. With several (like $3y+2x=7$) it's how you say which one you're after. The level is cleared when that letter is alone on one side, the other side doesn't contain it, and no power-up would change that side any more. So $y = \frac{7-2x}{3}$ wins, but $x = \frac{4}{2}$ still needs a cancel.
+
+Instead of typing a step, you press one of four arcade buttons — **add**, **subtract**, **multiply**, **divide** — after typing an amount in the box next to it (Enter in a box presses its button).
+
+Three power-ups light up only when they would change something. Each does one small thing, so students see every step:
+ - `combine like terms` works the same as on the main tab.
+ - `cancel common factors` cancels what matches on the top and bottom of a fraction, including numbers with a common factor: $\frac{2x}{2}$ becomes $x$ and $\frac{4}{6}$ becomes $\frac{2}{3}$. It never factors first, so $\frac{2x+4}{2}$ stays as it is.
+ - `multiply numbers` multiplies plain numbers in the same product: $3\cdot 4$ becomes $12$ and $2\cdot 3x$ becomes $6x$.
+
+Before combine or cancel lands, the screen briefly shows what it's about to do, with a sword-slash sound: like terms light up in matching colours, and cancelled factors get struck through (a partly cancelled number shows what's left, like a 2 above a struck-out 4). Only the top level of each side is marked up.
+
+So $\frac{x}{3}=4$ → multiply by 3 → $3\left(\frac{x}{3}\right) = 3\cdot 4$ → cancel → $x = 3\cdot 4$ → multiply numbers → $x = 12$.
+
+When the level is cleared you get **LEVEL CLEAR!** along with your move count. Only the four big buttons count as moves; power-ups are free. Undo and the clickable history work the same as on the main tab. The sound toggle remembers your choice in this browser.
+
 ## How it works
 Under the hood, this is nothing more than a Sympy interface, using LaTeX as the language of choice for typing equations. Rendering is done with mathjax.
 
@@ -29,10 +47,12 @@ SymPy runs directly in the browser via [Pyodide](https://pyodide.org) (Python co
 ```
 index.html            the page
 css/styles.css        styles (light + dark mode)
-js/app.js             UI: history, undo, buttons, live preview
+js/app.js             UI: history, undo, buttons, live preview, tabs
+js/arcade.js          Arcade mode UI and sound effects
+js/math.js            MathJax rendering helper shared by both tabs
 js/engine-client.js   promise wrapper around the worker
 js/worker.js          loads Pyodide + SymPy and runs py/engine.py
-py/engine.py          the math: parsing, both-sides operations, the four buttons
+py/engine.py          the math: parsing, both-sides operations, the buttons, highlights
 tests/test_engine.py  pytest tests for the math engine
 ```
 

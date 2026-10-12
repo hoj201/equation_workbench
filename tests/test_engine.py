@@ -228,3 +228,154 @@ def test_preview():
     assert engine.preview("x^2=4") == "x^{2} = 4"
     assert engine.preview("/(x+1)", "op") == r"\div\,\left(x + 1\right)"
     assert engine.preview("(x+", "problem") == ""
+
+
+# ---------------------------------------------------------------- arcade mode
+
+
+def _steps(start, *steps):
+    """Run a problem through ops ('+1') and buttons ('!cancel'); return the last result."""
+    r = engine.parse_problem(start)
+    for s in steps:
+        r = engine.transform(r["id"], s[1:]) if s[0] == "!" else engine.apply_op(r["id"], s)
+    return r
+
+
+@pytest.mark.parametrize(
+    "start,steps,expected",
+    [
+        ("2x=4", ["/2"], "x = 2"),
+        ("x/3=4", ["*3"], r"x = 3 \cdot 4"),
+        ("x=3/6", [], r"x = \frac{1}{2}"),
+        ("2x=-4", ["/(-4)"], r"-\frac{x}{2} = 1"),
+        ("-2x=6", ["/-2"], "x = -3"),
+        ("6x=4", ["/6"], r"x = \frac{2}{3}"),
+        ("2x/3=4", ["*3/2"], r"x = 3 \cdot 2"),
+        ("(x+1)(x+2)/(x+1)", [], "x + 2"),
+        ("x^3/x", [], "x^{2}"),
+    ],
+)
+def test_cancel_common_factors(start, steps, expected):
+    r = _steps(start, *steps, "!cancel")
+    assert r["latex"] == expected
+    assert r["label"] == r"\text{cancel common factors}"
+
+
+@pytest.mark.parametrize(
+    "start,steps,expected",
+    [
+        ("x/3=4", ["*3", "!cancel"], "x = 12"),
+        ("x=2*3*x", [], "x = 6 x"),
+        ("2*3*x/(4*5)", [], r"\frac{6 x}{20}"),
+        ("x/4=-3", ["*4", "!cancel"], "x = -12"),
+    ],
+)
+def test_multiply_numbers(start, steps, expected):
+    r = _steps(start, *steps, "!multiply")
+    assert r["latex"] == expected
+    assert r["label"] == r"\text{multiply numbers}"
+
+
+def test_negative_numbers_are_single_numbers():
+    # -2x/-2 has nothing to multiply, and 6/(-2) mustn't sprout a -1 factor.
+    r = _steps("-2x=6", "/-2")
+    assert engine.options(r["id"])["multiply"] is False
+    assert _steps("-2x=6", "/-2", "!cancel")["latex"] == "x = -3"
+
+
+def test_multiply_numbers_leaves_fractions_for_cancel():
+    r = engine.parse_problem("6/3")
+    assert engine.options(r["id"])["multiply"] is False
+    assert engine.options(r["id"])["cancel"] is True
+
+
+def test_cancel_leaves_sums_alone():
+    # (2x+4)/2 needs factoring first; cancel doesn't factor.
+    r = engine.parse_problem("(2x+4)/2")
+    assert engine.options(r["id"])["cancel"] is False
+
+
+def test_options_track_the_solve():
+    r = engine.parse_problem("2x+1=5")
+    assert engine.options(r["id"]) == {
+        "combine": False, "cancel": False, "multiply": False, "solved": False
+    }
+    r = _steps("2x+1=5", "-1")
+    assert engine.options(r["id"])["combine"] is True
+    r = _steps("2x+1=5", "-1", "!combine", "/2")
+    assert engine.options(r["id"])["cancel"] is True
+    r = _steps("2x+1=5", "-1", "!combine", "/2", "!cancel")
+    assert engine.options(r["id"]) == {
+        "combine": False, "cancel": False, "multiply": False, "solved": True
+    }
+
+
+@pytest.mark.parametrize(
+    "text,solved",
+    [("x=4", True), ("4=x", True), ("x=-2/3", True), ("x=2.5", True),
+     ("x=4/2", False), ("2x=4", False), ("x=y", False), ("x+1", False)],
+)
+def test_solved(text, solved):
+    assert engine.options(engine.parse_problem(text)["id"])["solved"] is solved
+
+
+def test_reciprocals_print_as_fractions():
+    assert _steps("3x=1", "/3")["latex"] == r"\frac{3 x}{3} = \frac{1}{3}"
+    assert _steps("x=1", "/(x+1)")["latex"] == r"\frac{x}{x + 1} = \frac{1}{x + 1}"
+
+
+def test_parse_lists_variables():
+    assert engine.parse_problem("3y+2x=7")["variables"] == ["x", "y"]
+    assert engine.parse_problem("2+3=5")["variables"] == []
+
+
+@pytest.mark.parametrize(
+    "text,target,solved",
+    [
+        ("y=(7-2x)/3", "y", True),
+        ("(7-2x)/3=y", "y", True),
+        ("y=7/3-2x/3", "y", True),
+        ("y=6x/3", "y", False),  # cancel first
+        ("y=2x+x", "y", False),  # combine first
+        ("y=2y+1", "y", False),  # y on both sides
+        ("x=7-3y", "y", False),  # solved for the wrong letter
+        ("x=7-3y", "x", True),
+        ("y=4", "y", True),
+        ("y=4/2", "y", False),
+    ],
+)
+def test_solved_for_a_chosen_variable(text, target, solved):
+    r = engine.parse_problem(text)
+    assert engine.options(r["id"], target)["solved"] is solved
+
+
+def test_solve_for_y_start_to_finish():
+    r = _steps("3y+2x=7", "-2x", "!combine", "/3", "!cancel")
+    assert r["latex"] == r"y = \frac{7 - 2 x}{3}"
+    assert engine.options(r["id"], "y")["solved"] is True
+
+
+def test_highlight_colours_like_terms():
+    r = _steps("3x-7=2x+5", "-2x")
+    tex = engine.highlight(r["id"], "combine")
+    assert tex.count(r"\color{#ff3fa4}") == 6  # 3x, -2x on each side (sign + term)
+    assert "- 7" in tex and "+ 5" in tex  # lone terms stay plain
+
+
+def test_highlight_strikes_cancelled_factors():
+    tex = engine.highlight(_steps("6x=4", "/6")["id"], "cancel")
+    assert tex.count(r"\cancel{6}") == 3  # 6x/6 twice, plus 4/6 -> 2/3
+    assert r"\overset{2}{\cancel{4}}" in tex
+    assert r"\underset{3}{\cancel{6}}" in tex
+
+
+def test_highlight_keeps_subtraction_outside_the_fraction():
+    tex = engine.highlight(engine.parse_problem("2x/2-6/3=1")["id"], "cancel")
+    assert r"} - \frac{" in tex
+
+
+def test_highlight_is_empty_when_nothing_to_show():
+    r = engine.parse_problem("2x+1=5")
+    assert engine.highlight(r["id"], "combine") == ""
+    assert engine.highlight(r["id"], "cancel") == ""
+    assert engine.highlight(r["id"], "multiply") == ""
