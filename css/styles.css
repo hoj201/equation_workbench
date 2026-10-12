@@ -1098,6 +1098,12 @@ code {
   text-shadow: 0 0 6px rgb(255 94 94 / 0.6);
 }
 
+.screen__error.is-info {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px rgb(63 243 255 / 0.6);
+  animation: blink 1.1s steps(1) infinite;
+}
+
 .screen__error:empty {
   display: none;
 }

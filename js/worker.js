@@ -31,7 +31,10 @@ async function boot() {
   progress("Loading the LaTeX reader…");
   await pyodide.pyimport("micropip").install("lark");
   progress("Almost ready…");
-  const source = await (await fetch(new URL("../py/engine.py", import.meta.url))).text();
+  // no-cache: always check with the server, so a cached older engine.py
+  // can't be paired with newer page code after a deploy.
+  const url = new URL("../py/engine.py", import.meta.url);
+  const source = await (await fetch(url, { cache: "no-cache" })).text();
   pyodide.FS.writeFile("/home/pyodide/engine.py", source);
   pyodide.runPython(DISPATCH);
   return pyodide.globals.get("_dispatch");

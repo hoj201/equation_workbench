@@ -120,6 +120,9 @@ export function initArcade(engine) {
     powerups: [...document.querySelectorAll("#b-deck [data-transform]")],
   };
 
+  let engineReady = false;
+  engine.ready.then(() => (engineReady = true), () => {});
+
   // Each step: {id, latex, label, move, options: {combine, cancel, multiply, solved}}.
   // move is true for the big arcade buttons; only those count as moves.
   // target is the variable being solved for.
@@ -213,7 +216,25 @@ export function initArcade(engine) {
 
   function clearError() {
     els.error.textContent = "";
+    els.error.classList.remove("is-info");
   }
+
+  function showInfo(message) {
+    els.error.textContent = message;
+    els.error.classList.add("is-info");
+  }
+
+  // A bug shouldn't look like a dead button: say something and log it.
+  const guarded = (fn) => async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      console.error(err);
+      state.busy = false;
+      render();
+      showError("Something went wrong. Try refreshing the page.");
+    }
+  };
 
   async function run(fn, ...args) {
     setBusy(true);
@@ -252,9 +273,21 @@ export function initArcade(engine) {
   async function startGame(text, target) {
     if (state.busy) return;
     if (!text) return showError("Type an equation first!");
+    if (!engineReady) {
+      showInfo("WARMING UP THE MATH ENGINE… HANG ON!");
+      setBusy(true);
+      try {
+        await engine.ready;
+      } catch {
+        return showError("The math engine didn't load. Check your connection and refresh.");
+      } finally {
+        setBusy(false);
+      }
+    }
     const parsed = await run("parse_problem", text);
     if (!parsed) return;
     const vars = parsed.variables;
+    if (!Array.isArray(vars)) throw new Error("Engine is out of date (no variables).");
     if (!parsed.latex.includes("=")) return showError("You need an = sign to solve something!");
     if (!target) {
       if (vars.length === 1) target = vars[0];
@@ -357,28 +390,32 @@ export function initArcade(engine) {
 
   // ---------------------------------------------------------------- wiring
 
+  const guardedStart = guarded(startGame);
+  const guardedOp = guarded(pressOp);
+  const guardedPowerup = guarded(pressPowerup);
+
   els.start.addEventListener("submit", (e) => {
     e.preventDefault();
-    startGame(els.problem.value.trim(), els.target.value.trim());
+    guardedStart(els.problem.value.trim(), els.target.value.trim());
   });
 
   $("b-levels").addEventListener("click", (e) => {
     const chip = e.target.closest("[data-level]");
-    if (chip) startGame(chip.dataset.level, chip.dataset.target ?? "");
+    if (chip) guardedStart(chip.dataset.level, chip.dataset.target ?? "");
   });
 
   els.deck.addEventListener("click", (e) => {
     const op = e.target.closest("[data-op]")?.dataset.op;
-    if (op) return pressOp(op);
+    if (op) return guardedOp(op);
     const kind = e.target.closest("[data-transform]")?.dataset.transform;
-    if (kind) pressPowerup(kind);
+    if (kind) guardedPowerup(kind);
   });
 
   for (const slot of els.slots) {
     slot.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        pressOp(slot.dataset.for);
+        guardedOp(slot.dataset.for);
       }
     });
     slot.addEventListener("input", clearError);
