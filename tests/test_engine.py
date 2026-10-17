@@ -283,6 +283,27 @@ def test_negative_numbers_are_single_numbers():
     assert _steps("-2x=6", "/-2", "!cancel")["latex"] == "x = -3"
 
 
+@pytest.mark.parametrize(
+    "start,steps,expected",
+    [
+        ("-x=5", ["*(-1)", "!multiply"], "x = -5"),
+        ("-2x=6", ["*(-1)", "!multiply", "/2", "!cancel"], "x = -3"),
+        ("-x=5", ["/(-1)", "!cancel"], "x = -5"),
+        ("x/1=5", ["!cancel"], "x = 5"),
+        ("1*x=5", ["!multiply"], "x = 5"),
+        ("-3x=5", ["/(-3)", "!cancel"], r"x = -\frac{5}{3}"),
+    ],
+)
+def test_solving_with_minus_one(start, steps, expected):
+    r = _steps(start, *steps)
+    assert r["latex"] == expected
+    assert engine.options(r["id"], "x")["solved"] is True
+
+
+def test_minus_a_negative_prints_with_brackets():
+    assert _steps("-x=5", "*(-1)")["latex"] == r"-\left(- x\right) = \left(-1\right) 5"
+
+
 def test_multiply_numbers_leaves_fractions_for_cancel():
     r = engine.parse_problem("6/3")
     assert engine.options(r["id"])["multiply"] is False

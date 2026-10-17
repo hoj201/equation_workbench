@@ -84,7 +84,10 @@ class _Printer(LatexPrinter):
         if not fiddly:
             return super()._print_Mul(expr)
         if len(args) == 1:
-            return sign + self._print(args[0])
+            tex = self._print(args[0])
+            if sign and (tex.startswith("-") or isinstance(args[0], sp.Add)):
+                tex = rf"\left({tex}\right)"
+            return sign + tex
         parts = []
         for i, a in enumerate(args):
             tex = self._print(a)
@@ -381,8 +384,14 @@ class _Fraction:
         self.top_numbers, self.top = [], []
         self.bottom_numbers, self.bottom = [], []
         factors = _flatten_mul(term)
-        # -2x is stored as -1·2·x, but it's one number to a student.
-        if len(factors) > 1 and factors[0] == -1 and factors[1].is_Integer:
+        # -2x is stored as -1·2·x, but it's one number to a student. (-1)·5
+        # and (-1)(-1)x are real products, though, and print that way.
+        if (
+            len(factors) > 2
+            and factors[0] == -1
+            and factors[1].is_Integer
+            and factors[1] > 0
+        ):
             factors = [-factors[1]] + factors[2:]
         for f in factors:
             self._add(f, top=True)
@@ -450,6 +459,12 @@ def _cancel_plan(term):
     bottoms = [n for n in frac.bottom_numbers if n.is_Integer]
     negative = sum(bool(n < 0) for n in tops + bottoms) % 2
     tops, bottoms = [int(abs(n)) for n in tops], [int(abs(n)) for n in bottoms]
+    # Dividing by 1 or -1 cancels, and a minus on the bottom cancels with
+    # one on top or moves up: 5/(-3) -> -5/3.
+    if any(n == 1 for n in bottoms) or any(
+        n < 0 for n in frac.bottom_numbers if n.is_Integer
+    ):
+        cancelled = True
     for i in range(len(bottoms)):
         for j in range(len(tops)):
             g = sp.igcd(tops[j], bottoms[i])
@@ -495,29 +510,34 @@ def _multiply_product(term):
     Returns None when there is nothing to multiply.
     """
     frac = _Fraction(term)
-    if len(frac.top_numbers) < 2 and len(frac.bottom_numbers) < 2:
+    # A lone 1 in front of other factors goes too: 1·x -> x.
+    stray_one = frac.top_numbers == [1] and bool(frac.top)
+    if len(frac.top_numbers) < 2 and len(frac.bottom_numbers) < 2 and not stray_one:
         return None
-    for side in ("top_numbers", "bottom_numbers"):
+    for side, others in (("top_numbers", frac.top), ("bottom_numbers", None)):
         numbers = getattr(frac, side)
-        if len(numbers) > 1:
+        if len(numbers) > 1 or stray_one and side == "top_numbers":
             value = sp.Mul(*numbers)
-            setattr(frac, side, [] if value == 1 and side == "bottom_numbers" else [value])
+            drop = value == 1 and (others is None or others)
+            setattr(frac, side, [] if drop else [value])
     return frac.build()
 
 
 def _per_product(fn):
     """Apply fn to every product in an expression, innermost first."""
 
-    def walk(expr):
+    def walk(expr, in_mul=False):
         if not expr.args:
             return expr
         # Walk the children first, outside evaluate(False): fn does real
         # arithmetic on numbers and must not be left unevaluated.
-        args = [walk(a) for a in expr.args]
+        args = [walk(a, isinstance(expr, sp.Mul)) for a in expr.args]
         with sp.evaluate(False):
             rebuilt = expr.func(*args)
+        # A number like 1/(-1) inside a product is left for the product, so
+        # x/(-1) is seen whole rather than as x·(-1).
         if isinstance(rebuilt, sp.Mul) or (
-            isinstance(rebuilt, sp.Pow) and rebuilt.is_number
+            isinstance(rebuilt, sp.Pow) and rebuilt.is_number and not in_mul
         ):
             return fn(rebuilt) or rebuilt
         return rebuilt
@@ -592,7 +612,7 @@ def _marked_fraction(term):
             if v.is_Integer:
                 left = after[j]
                 j += 1
-                if left != abs(v):
+                if left != abs(v) or (not top and left == 1):
                     tex = struck(tex, None if left == 1 else left, top)
             out.append(("number", tex))
         return out
